@@ -1,8 +1,8 @@
 use axum::extract::Path;
 use axum::response::Html;
-use axum::{Router, routing::get};
+use axum::{routing::get, Router};
 use jieba_rs::Jieba;
-use lol_html::{RewriteStrSettings, element, rewrite_str, text};
+use lol_html::{element, rewrite_str, text, RewriteStrSettings};
 use once_cell::sync::Lazy;
 use reqwest::Client;
 use std::collections::HashMap;
@@ -16,21 +16,47 @@ fn load_dictionary() -> HashMap<String, String> {
         }
         let parts: Vec<&str> = line.split(',').collect();
         if parts.len() >= 3 {
-            dict.insert(parts[0].to_string(), parts[2].to_string());
+            let word = parts[0].to_string();
+            if dict.contains_key(&word) {
+                continue;
+            }
+            dict.insert(word, parts[2].to_string());
         }
     }
     dict
 }
 
 static BOPOMOFO_DICT: Lazy<HashMap<String, String>> = Lazy::new(load_dictionary);
-static JIEBA: Lazy<Jieba> = Lazy::new(|| Jieba::new());
+static JIEBA: Lazy<Jieba> = Lazy::new(|| {
+    let mut jieba = Jieba::new();
+    for (word, _bopomofo) in BOPOMOFO_DICT.iter() {
+        if word.chars().count() > 1
+            && !word.chars().all(|c| {
+                ('\u{3105}'..='\u{312F}').contains(&c)
+                    || c == 'ˊ'
+                    || c == 'ˋ'
+                    || c == 'ˇ'
+                    || c == '˙'
+            })
+        {
+            jieba.add_word(word, None, None);
+        }
+    }
+    jieba
+});
 
 #[tokio::main]
 async fn main() {
-    let app = Router::new().route("/{*path}", get(mirror));
+    let app = Router::new()
+        .route("/", get(redirect))
+        .route("/{*path}", get(mirror));
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
     axum::serve(listener, app).await.unwrap();
+}
+
+async fn redirect() -> Html<String> {
+    mirror(Path("/zh-tw/Wikipedia:首页".to_string())).await
 }
 
 async fn mirror(Path(path): Path<String>) -> Html<String> {
@@ -58,8 +84,8 @@ async fn get_page(path: String) -> Result<reqwest::Response, reqwest::Error> {
         .await
 }
 
-fn transform_page(body: String) -> String {
-    let mut element_content_handlers = vec![
+pub fn transform_page(body: String) -> String {
+    let element_content_handlers = vec![
         element!("*[href]", |el| {
             if let Some(href) = el.get_attribute("href") {
                 let new_href = match href.as_str() {
@@ -132,23 +158,22 @@ fn transform_page(body: String) -> String {
             );
             Ok(())
         }),
+        text!("body *", |text| {
+            let content = text.as_str();
+            if content
+                .chars()
+                .any(|c| ('\u{4e00}'..='\u{9fff}').contains(&c))
+            {
+                let mut new_content = String::new();
+                let segments = JIEBA.cut(&content, false);
+                for seg in segments {
+                    new_content.push_str(&insert_bopomofo(seg));
+                }
+                text.replace(&new_content, lol_html::html_content::ContentType::Html);
+            };
+            Ok(())
+        }),
     ];
-
-    element_content_handlers.push(text!("*", |text| {
-        let content = text.as_str();
-        if content
-            .chars()
-            .any(|c| ('\u{4e00}'..='\u{9fff}').contains(&c))
-        {
-            let mut new_content = String::new();
-            let segments = JIEBA.cut(&content, false);
-            for seg in segments {
-                new_content.push_str(&insert_bopomofo(seg));
-            }
-            text.replace(&new_content, lol_html::html_content::ContentType::Html);
-        };
-        Ok(())
-    }));
 
     rewrite_str(
         &body,
@@ -173,6 +198,7 @@ fn insert_bopomofo(text: &str) -> String {
                     if let Some(last_char) = bp.chars().last() {
                         if tone_markers.contains(&last_char) {
                             let bopomofo = &bp[..bp.len() - last_char.len_utf8()];
+                            let last_char = format!("  {} ", last_char);
                             result.push_str(&format!(
                                 "<ruby>{}<rt>{}</rt><rt>{}</rt></ruby>",
                                 &ch, bopomofo, last_char
