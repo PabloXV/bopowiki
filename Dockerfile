@@ -9,6 +9,5 @@ FROM debian:bookworm-slim
 WORKDIR /app
 RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /app/target/release/bopo_wiki /app/
-COPY data/tsi.csv /app/data/
 EXPOSE 3000
 CMD ["./bopo_wiki"]
