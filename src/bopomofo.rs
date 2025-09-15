@@ -1,10 +1,10 @@
 use jieba_rs::Jieba;
 use once_cell::sync::Lazy;
-use std::collections::HashMap;
+use std::{collections::HashMap, result};
 
 fn load_dictionary() -> HashMap<String, String> {
     let mut dict = HashMap::new();
-    let csv = std::fs::read_to_string("data/tsi.csv").expect("failed to load dict csv");
+    let csv = std::fs::read_to_string("data/tsi_dedup.csv").expect("failed to load dict csv");
     for line in csv.lines() {
         if line.starts_with('#') || line.is_empty() {
             continue;
@@ -45,17 +45,36 @@ fn transform_segment(segment: &str) -> String {
         .chars()
         .any(|c| ('\u{4e00}'..='\u{9fff}').contains(&c))
     {
-        if let Some(bopo) = BOPOMOFO_DICT.get(segment) {
-            let bopo_parts: Vec<&str> = bopo.split(' ').collect();
-            let chars: Vec<char> = segment.chars().collect();
+        let bopo = chars_to_bopo(segment);
+        let bopo_parts: Vec<&str> = bopo.split(' ').collect();
+        let chars: Vec<char> = segment.chars().collect();
 
-            if bopo_parts.len() == chars.len() {
-                return synthesize_char_and_bopo(chars, bopo_parts);
-            }
+        if bopo_parts.len() == chars.len() {
+            return synthesize_char_and_bopo(chars, bopo_parts);
         }
     }
 
     segment.to_string()
+}
+
+fn chars_to_bopo(chars: &str) -> String {
+    if let Some(bopo) = BOPOMOFO_DICT.get(chars) {
+        return bopo.to_string();
+    }
+
+    let mut result = String::new();
+    for ch in chars.chars() {
+        let bopo = BOPOMOFO_DICT.get(&ch.to_string());
+        if let Some(bopo) = bopo {
+            result.push_str(bopo);
+            result.push(' ');
+        } else {
+            return String::from("");
+        }
+    }
+
+    result.pop();
+    result
 }
 
 fn synthesize_char_and_bopo(chars: Vec<char>, bopo_parts: Vec<&str>) -> String {
@@ -96,10 +115,41 @@ pub fn insert_bopomofo(text: &str) -> String {
 mod tests {
     use super::*;
 
+    //ㄅㄆㄇㄈ
+    //ㄉㄊㄋㄌ
+    //ㄍㄎㄏㄐ
+    //ㄑㄒㄓㄔ
+    //ㄕㄖㄗㄘ
+    //ㄙㄚㄛㄜ
+    //ㄝㄞㄟㄠ
+    //ㄡㄢㄣㄤ
+    //ㄥㄦㄧㄨㄩ
+
     #[test]
-    fn it_should_replace_relative_urls() {
+    fn it_should_insert_bopomofo_ruby_tags() {
         let input = "你好";
         let output = "<ruby>你<rt>ㄋㄧ</rt><rt>ˇ</rt></ruby><ruby>好<rt>ㄏㄠ</rt><rt>ˇ</rt></ruby>";
         assert_eq!(insert_bopomofo(input), output)
+    }
+
+    #[test]
+    fn it_should_do_single_char_bopmofo() {
+        let input = "會";
+        let output = "ㄏㄨㄟˋ";
+        assert_eq!(chars_to_bopo(input), output)
+    }
+
+    #[test]
+    fn it_should_do_multi_char_bopmofo() {
+        let input = "會計";
+        let output = "ㄎㄨㄞˋ ㄐㄧˋ";
+        assert_eq!(chars_to_bopo(input), output)
+    }
+
+    #[test]
+    fn it_should_do_names() {
+        let input = "丹尼斯";
+        let output = "ㄉㄢ ㄋㄧˊ ㄙ";
+        assert_eq!(chars_to_bopo(input), output)
     }
 }
