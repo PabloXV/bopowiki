@@ -97,6 +97,8 @@ pub fn transform_page(body: String) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::{fs::read_to_string, time::Instant};
+
     use super::*;
 
     #[test]
@@ -125,5 +127,22 @@ mod tests {
     fn it_should_not_add_bopomofo_to_nonbody_text() {
         let input = "<p>你好</p>";
         assert_eq!(transform_page(input.to_string()), input.to_string())
+    }
+
+    #[test]
+    fn how_long_it_takes() {
+        // Naive FS: 2.6-2.9s
+        let input = read_to_string("test_input.html").expect("it should read file");
+        let start = Instant::now();
+        transform_page(input.to_string());
+        let duration = start.elapsed();
+        println!("Time: {:?}", duration);
+
+        // 2nd run takes 90ms
+        let input = read_to_string("test_input.html").expect("it should read file");
+        let start = Instant::now();
+        transform_page(input.to_string());
+        let duration = start.elapsed();
+        println!("Time: {:?}", duration)
     }
 }

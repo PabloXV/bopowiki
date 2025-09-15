@@ -1,44 +1,8 @@
 use jieba_rs::Jieba;
 use once_cell::sync::Lazy;
-use std::{collections::HashMap, result};
 
-fn load_dictionary() -> HashMap<String, String> {
-    let mut dict = HashMap::new();
-    let csv = std::fs::read_to_string("data/tsi_dedup.csv").expect("failed to load dict csv");
-    for line in csv.lines() {
-        if line.starts_with('#') || line.is_empty() {
-            continue;
-        }
-        let parts: Vec<&str> = line.split(',').collect();
-        if parts.len() >= 3 {
-            let word = parts[0].to_string();
-            if dict.contains_key(&word) {
-                continue;
-            }
-            dict.insert(word, parts[2].to_string());
-        }
-    }
-    dict
-}
-
-static BOPOMOFO_DICT: Lazy<HashMap<String, String>> = Lazy::new(load_dictionary);
-static JIEBA: Lazy<Jieba> = Lazy::new(|| {
-    let mut jieba = Jieba::new();
-    for (word, _bopomofo) in BOPOMOFO_DICT.iter() {
-        if word.chars().count() > 1
-            && !word.chars().all(|c| {
-                ('\u{3105}'..='\u{312F}').contains(&c)
-                    || c == 'ˊ'
-                    || c == 'ˋ'
-                    || c == 'ˇ'
-                    || c == '˙'
-            })
-        {
-            jieba.add_word(word, None, None);
-        }
-    }
-    jieba
-});
+include!(concat!(env!("OUT_DIR"), "/bopomofo_dict.rs"));
+static JIEBA: Lazy<Jieba> = Lazy::new(|| Jieba::new());
 
 fn transform_segment(segment: &str) -> String {
     if segment
@@ -64,7 +28,8 @@ fn chars_to_bopo(chars: &str) -> String {
 
     let mut result = String::new();
     for ch in chars.chars() {
-        let bopo = BOPOMOFO_DICT.get(&ch.to_string());
+        let ch_str = ch.to_string();
+        let bopo = BOPOMOFO_DICT.get(ch_str.as_str());
         if let Some(bopo) = bopo {
             result.push_str(bopo);
             result.push(' ');
