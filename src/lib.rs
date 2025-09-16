@@ -68,9 +68,9 @@ pub fn transform_page(body: String) -> String {
                         margin-right: 0em;
                     }
                     rt:nth-of-type(2) {
-                        margin-left: -0.8em;
+                        margin-left: -0.5em;
                         margin-right: -0.2em;
-                        margin-top: 1em;
+                        margin-top: .8em;
                     }
                 </style>"#,
                 lol_html::html_content::ContentType::Html,
