@@ -75,6 +75,18 @@ pub fn transform_page(body: String) -> String {
                 </style>"#,
                 lol_html::html_content::ContentType::Html,
             );
+
+            el.append(
+                r#"<script>
+                (function() {
+                    const htmlEl = document.documentElement;
+                    htmlEl.classList.remove('skin-theme-clientpref-day');
+                    htmlEl.classList.add('skin-theme-clientpref-night');
+                })();
+                </script>"#,
+                lol_html::html_content::ContentType::Html,
+            );
+
             Ok(())
         }),
         text!("body *", |text| {
